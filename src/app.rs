@@ -32,6 +32,7 @@ impl App {
             terminal.draw(|frame| self.draw(frame, terminal_state))?;
             self.handle_events()?;
         }
+
         Ok(())
     }
 
@@ -46,6 +47,7 @@ impl App {
             }
             _ => {}
         };
+
         Ok(())
     }
 

@@ -5,6 +5,7 @@ use crate::state::State;
 use clap::Parser;
 
 use anyhow::Result;
+use secret::Secret;
 
 #[derive(Parser)]
 pub struct Args {
@@ -29,7 +30,7 @@ pub async fn get_initial_state_from_args() -> Result<Arc<State>> {
         }
 
         state
-            .add_account(parts[0].to_string(), parts[1].to_string())
+            .add_account(parts[0].to_string(), Secret::new_raw(parts[1].to_string()))
             .await;
     }
 

@@ -325,6 +325,12 @@ checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
 name = "base64"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
+
+[[package]]
+name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
@@ -1153,6 +1159,7 @@ dependencies = [
  "chumsky",
  "dirs 4.0.0",
  "email-macros",
+ "email_address",
  "futures",
  "hickory-resolver",
  "http-lib",
@@ -1160,6 +1167,7 @@ dependencies = [
  "keyring-lib",
  "mail-builder",
  "mail-parser",
+ "mail-send",
  "mime_guess",
  "mml-lib",
  "oauth-lib",
@@ -1170,6 +1178,8 @@ dependencies = [
  "rayon",
  "regex",
  "secret-lib",
+ "serde",
+ "serde-xml-rs",
  "shellexpand-utils",
  "thiserror 1.0.69",
  "tokio",
@@ -1177,6 +1187,7 @@ dependencies = [
  "tracing",
  "tree_magic_mini",
  "urlencoding",
+ "utf7-imap",
  "uuid",
 ]
 
@@ -1189,6 +1200,12 @@ dependencies = [
  "quote",
  "syn 2.0.100",
 ]
+
+[[package]]
+name = "email_address"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449"
 
 [[package]]
 name = "encoding_rs"
@@ -2039,6 +2056,7 @@ checksum = "56921558c465f33d51c6047b86b76764cd2a86b69b99653b43ba1f9a32965218"
 dependencies = [
  "keyring",
  "once_cell",
+ "serde",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -2177,6 +2195,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "mail-send"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a575d25cf00ed68e5790b473b29242a47e991c6187785d47b45e31fc5816554"
+dependencies = [
+ "base64 0.22.1",
+ "gethostname",
+ "rustls 0.23.26",
+ "rustls-pki-types",
+ "smtp-proto",
+ "tokio",
+ "tokio-rustls 0.26.2",
+ "webpki-roots",
+]
+
+[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2258,6 +2292,7 @@ dependencies = [
  "pgp-lib",
  "process-lib",
  "secret-lib",
+ "serde",
  "shellexpand-utils",
  "thiserror 1.0.69",
  "tracing",
@@ -2783,6 +2818,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eb47ed33aeaf6b32cecbbde6f56dde6c8740f2dac4a146179cc82f797918c46"
 dependencies = [
+ "serde",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -3276,6 +3312,7 @@ checksum = "ba34b385def61154faed219ac86f80ad8c72877a278208bac2ecdd85d68f962f"
 dependencies = [
  "keyring-lib",
  "process-lib",
+ "serde",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3349,6 +3386,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-xml-rs"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb3aa78ecda1ebc9ec9847d5d3aba7d618823446a049ba2491940506da6e2782"
+dependencies = [
+ "log",
+ "serde",
+ "thiserror 1.0.69",
+ "xml-rs",
 ]
 
 [[package]]
@@ -3509,6 +3558,12 @@ name = "smallvec"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8917285742e9f3e1683f0a9c4e6b57960b7314d0b08d30d1ecd426713ee2eee9"
+
+[[package]]
+name = "smtp-proto"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7d3950ab75b03c52f2f13fd52aab91c9d62698b231b67240e85c3ef5301e63e"
 
 [[package]]
 name = "socket2"
@@ -3709,7 +3764,9 @@ dependencies = [
  "email-lib",
  "futures",
  "ratatui",
+ "secret-lib",
  "tokio",
+ "tokio-stream",
  "tokio-util",
 ]
 
@@ -3760,6 +3817,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e727b36a1a0e8b74c376ac2211e40c2c8af09fb4013c60d910495810f008e9b"
 dependencies = [
  "rustls 0.23.26",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eca58d7bba4a75707817a2c44174253f9236b2d5fbd055602e9d5c07c139a047"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
  "tokio",
 ]
 
@@ -3970,6 +4038,17 @@ name = "utf16_iter"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8232dd3cdaed5356e0f716d285e4b40b932ac434100fe9b7e0e8e935b9e6246"
+
+[[package]]
+name = "utf7-imap"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e326365261fc2761f0809dfb6032810534a0427bbd8f0edf546f6afeef89f5d"
+dependencies = [
+ "base64 0.13.1",
+ "encoding_rs",
+ "regex",
+]
 
 [[package]]
 name = "utf8_iter"
@@ -4470,6 +4549,12 @@ dependencies = [
  "libc",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "xml-rs"
+version = "0.8.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a62ce76d9b56901b19a74f19431b0d8b3bc7ca4ad685a746dfd78ca8f4fc6bda"
 
 [[package]]
 name = "yoke"
