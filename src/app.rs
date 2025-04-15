@@ -5,7 +5,10 @@ use crate::{
 };
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::{widgets::ListState, DefaultTerminal, Frame};
+use ratatui::{
+    widgets::{ListState, TableState},
+    DefaultTerminal, Frame,
+};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -23,12 +26,17 @@ pub struct App {
 
     pub accounts_list_state: ListState,
     pub accounts_list_selected: Option<usize>,
+
     pub folders_list_state: ListState,
     pub folders_list_selected: Option<usize>,
-    pub messages_list_state: ListState,
-    pub messages_list_selected: Option<usize>,
+
+    pub messages_table_state: TableState,
+    pub messages_table_selected: Option<usize>,
+    pub messages_table_page: usize,
 
     pub view_state: ViewState,
+
+    pub should_mark_state_as_updating: bool,
 
     pub exit: bool,
 }
@@ -38,23 +46,32 @@ impl App {
         &mut self,
         terminal: &mut DefaultTerminal,
         state: Arc<State>,
-        tx: UnboundedSender<Actions>,
+        actions_tx: UnboundedSender<Actions>,
     ) -> Result<()> {
         self.view_state = state.as_view_state(None).await;
 
-        self.select_first_account(tx.clone());
+        self.select_first_account(actions_tx.clone());
 
         while !self.exit {
             if let Some(selected_account_idx) = self.accounts_list_selected {
                 let selected_account = self.view_state.accounts.get(selected_account_idx).cloned();
 
-                self.select_first_folder_if_not_selected(tx.clone());
+                self.select_first_folder_if_not_selected(actions_tx.clone());
+                self.select_first_message_if_not_selected();
 
-                self.view_state = state.as_view_state(selected_account).await;
+                if !state.is_updating().await {
+                    self.view_state = state.as_view_state(selected_account).await;
+                }
             };
 
             terminal.draw(|frame| self.draw(frame))?;
-            self.handle_events(tx.clone())?;
+            self.handle_events(actions_tx.clone())?;
+
+            if self.should_mark_state_as_updating {
+                *state.is_updating.write().await = true;
+
+                self.should_mark_state_as_updating = false;
+            }
         }
 
         Ok(())
@@ -64,11 +81,11 @@ impl App {
         ui(frame, self);
     }
 
-    fn handle_events(&mut self, tx: UnboundedSender<Actions>) -> Result<()> {
+    fn handle_events(&mut self, actions_tx: UnboundedSender<Actions>) -> Result<()> {
         if event::poll(Duration::from_millis(10))? {
             match event::read()? {
                 Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    self.handle_key_event(key_event, tx)
+                    self.handle_key_event(key_event, actions_tx)
                 }
                 _ => {}
             };
@@ -77,28 +94,32 @@ impl App {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent, tx: UnboundedSender<Actions>) {
+    fn handle_key_event(&mut self, key_event: KeyEvent, actions_tx: UnboundedSender<Actions>) {
         match self.selected_widget {
             SelectedWidget::Accounts => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
                 KeyCode::Char('2') => self.select_folders_widget(),
                 KeyCode::Char('3') => self.select_messages_widget(),
-                KeyCode::Up | KeyCode::Char('k') => self.select_previous_account(tx),
-                KeyCode::Down | KeyCode::Char('j') => self.select_next_account(tx),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_account(actions_tx),
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_account(actions_tx),
                 _ => {}
             },
             SelectedWidget::Folders => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
                 KeyCode::Char('1') => self.select_accounts_widget(),
                 KeyCode::Char('3') => self.select_messages_widget(),
-                KeyCode::Up | KeyCode::Char('k') => self.select_previous_folder(tx),
-                KeyCode::Down | KeyCode::Char('j') => self.select_next_folder(tx),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_folder(actions_tx),
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_folder(actions_tx),
                 _ => {}
             },
             SelectedWidget::Messages => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
                 KeyCode::Char('1') => self.select_accounts_widget(),
                 KeyCode::Char('2') => self.select_folders_widget(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_message(),
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_message(),
+                KeyCode::Left | KeyCode::Char('p') => self.select_previous_message_page(actions_tx),
+                KeyCode::Right | KeyCode::Char('n') => self.select_next_message_page(actions_tx),
                 _ => {}
             },
         }
@@ -120,27 +141,24 @@ impl App {
         self.exit = true;
     }
 
-    fn select_first_account(&mut self, tx: UnboundedSender<Actions>) {
+    fn select_first_account(&mut self, actions_tx: UnboundedSender<Actions>) {
         self.accounts_list_selected = Some(0);
         self.accounts_list_state.select(self.accounts_list_selected);
 
-        self.folders_list_state = ListState::default();
-        self.folders_list_selected = None;
-        self.view_state.folders = None;
-        self.messages_list_state = ListState::default();
-        self.messages_list_selected = None;
-        self.view_state.messages = None;
+        self.clear_folders();
+        self.clear_messages();
 
         if let Some(selected_account_idx) = self.accounts_list_selected {
             let selected_account = self.view_state.accounts.get(selected_account_idx).cloned();
 
             if let Some(login) = selected_account {
-                let _ = tx.send(Actions::ListFolders { login });
+                self.should_mark_state_as_updating = true;
+                let _ = actions_tx.send(Actions::ListFolders { login });
             }
         };
     }
 
-    fn select_previous_account(&mut self, tx: UnboundedSender<Actions>) {
+    fn select_previous_account(&mut self, actions_tx: UnboundedSender<Actions>) {
         let Some(selected_account_idx) = self.accounts_list_selected else {
             return;
         };
@@ -153,21 +171,18 @@ impl App {
         self.accounts_list_selected = Some(previous_account_idx);
         self.accounts_list_state.select(self.accounts_list_selected);
 
-        self.folders_list_state = ListState::default();
-        self.folders_list_selected = None;
-        self.view_state.folders = None;
-        self.messages_list_state = ListState::default();
-        self.messages_list_selected = None;
-        self.view_state.messages = None;
+        self.clear_folders();
+        self.clear_messages();
 
         let selected_account = self.view_state.accounts.get(previous_account_idx).cloned();
 
         if let Some(login) = selected_account {
-            let _ = tx.send(Actions::ListFolders { login });
+            self.should_mark_state_as_updating = true;
+            let _ = actions_tx.send(Actions::ListFolders { login });
         }
     }
 
-    fn select_next_account(&mut self, tx: UnboundedSender<Actions>) {
+    fn select_next_account(&mut self, actions_tx: UnboundedSender<Actions>) {
         let Some(selected_account_idx) = self.accounts_list_selected else {
             return;
         };
@@ -180,21 +195,18 @@ impl App {
         self.accounts_list_selected = Some(next_account_idx);
         self.accounts_list_state.select(self.accounts_list_selected);
 
-        self.folders_list_state = ListState::default();
-        self.folders_list_selected = None;
-        self.view_state.folders = None;
-        self.messages_list_state = ListState::default();
-        self.messages_list_selected = None;
-        self.view_state.messages = None;
+        self.clear_folders();
+        self.clear_messages();
 
         let selected_account = self.view_state.accounts.get(next_account_idx).cloned();
 
         if let Some(login) = selected_account {
-            let _ = tx.send(Actions::ListFolders { login });
+            self.should_mark_state_as_updating = true;
+            let _ = actions_tx.send(Actions::ListFolders { login });
         }
     }
 
-    fn select_first_folder_if_not_selected(&mut self, tx: UnboundedSender<Actions>) {
+    fn select_first_folder_if_not_selected(&mut self, actions_tx: UnboundedSender<Actions>) {
         if self.folders_list_selected.is_none() && self.view_state.folders.is_some() {
             self.folders_list_selected = Some(0);
             self.folders_list_state.select(self.folders_list_selected);
@@ -222,18 +234,17 @@ impl App {
             return;
         };
 
-        self.messages_list_state = ListState::default();
-        self.messages_list_selected = None;
-        self.view_state.messages = None;
+        self.clear_messages();
 
-        let _ = tx.send(Actions::ListEnvelopes {
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::ListEnvelopes {
             login,
             folder,
             page: 0,
         });
     }
 
-    fn select_previous_folder(&mut self, tx: UnboundedSender<Actions>) {
+    fn select_previous_folder(&mut self, actions_tx: UnboundedSender<Actions>) {
         let Some(selected_account_idx) = self.accounts_list_selected else {
             return;
         };
@@ -263,18 +274,17 @@ impl App {
         self.folders_list_selected = Some(previous_folder_idx);
         self.folders_list_state.select(self.folders_list_selected);
 
-        self.messages_list_state = ListState::default();
-        self.messages_list_selected = None;
-        self.view_state.messages = None;
+        self.clear_messages();
 
-        let _ = tx.send(Actions::ListEnvelopes {
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::ListEnvelopes {
             login,
             folder,
             page: 0,
         });
     }
 
-    fn select_next_folder(&mut self, tx: UnboundedSender<Actions>) {
+    fn select_next_folder(&mut self, actions_tx: UnboundedSender<Actions>) {
         let Some(selected_account_idx) = self.accounts_list_selected else {
             return;
         };
@@ -304,14 +314,170 @@ impl App {
         self.folders_list_selected = Some(next_folder_idx);
         self.folders_list_state.select(self.folders_list_selected);
 
-        self.messages_list_state = ListState::default();
-        self.messages_list_selected = None;
-        self.view_state.messages = None;
+        self.clear_messages();
 
-        let _ = tx.send(Actions::ListEnvelopes {
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::ListEnvelopes {
             login,
             folder,
             page: 0,
+        });
+    }
+
+    fn select_first_message_if_not_selected(&mut self) {
+        if self.messages_table_selected.is_none() && self.view_state.messages.is_some() {
+            self.messages_table_selected = Some(0);
+            self.messages_table_state
+                .select(self.messages_table_selected);
+        } else {
+            return;
+        }
+    }
+
+    fn select_previous_message(&mut self) {
+        let Some(selected_message_idx) = self.messages_table_selected else {
+            return;
+        };
+
+        let Some(messages) = &self.view_state.messages else {
+            return;
+        };
+
+        if messages.len() == 0 {
+            return;
+        }
+
+        let previous_message_idx = if selected_message_idx == 0 {
+            messages.len() - 1
+        } else {
+            selected_message_idx - 1
+        };
+
+        self.messages_table_selected = Some(previous_message_idx);
+        self.messages_table_state
+            .select(self.messages_table_selected);
+    }
+
+    fn select_next_message(&mut self) {
+        let Some(selected_message_idx) = self.messages_table_selected else {
+            return;
+        };
+
+        let Some(messages) = &self.view_state.messages else {
+            return;
+        };
+
+        if messages.len() == 0 {
+            return;
+        }
+
+        let next_message_idx = if selected_message_idx == messages.len() - 1 {
+            0
+        } else {
+            selected_message_idx + 1
+        };
+
+        self.messages_table_selected = Some(next_message_idx);
+        self.messages_table_state
+            .select(self.messages_table_selected);
+    }
+
+    fn clear_folders(&mut self) {
+        self.folders_list_state = ListState::default();
+        self.folders_list_selected = None;
+        self.view_state.folders = None;
+    }
+
+    fn clear_messages(&mut self) {
+        self.messages_table_state = TableState::default();
+        self.messages_table_selected = None;
+        self.messages_table_page = 0;
+        self.view_state.messages = None;
+    }
+
+    fn select_previous_message_page(&mut self, actions_tx: UnboundedSender<Actions>) {
+        let Some(selected_account_idx) = self.accounts_list_selected else {
+            return;
+        };
+
+        let Some(login) = self.view_state.accounts.get(selected_account_idx).cloned() else {
+            return;
+        };
+
+        let Some(folders) = &self.view_state.folders else {
+            return;
+        };
+
+        let Some(selected_folder_idx) = self.folders_list_selected else {
+            return;
+        };
+
+        let Some(folder) = folders.get(selected_folder_idx).cloned() else {
+            return;
+        };
+
+        if self.messages_table_page == 0 {
+            return;
+        } else {
+            self.messages_table_page -= 1;
+        };
+
+        self.messages_table_state = TableState::default();
+        self.messages_table_selected = None;
+        self.view_state.messages = None;
+
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::ListEnvelopes {
+            login,
+            folder,
+            page: self.messages_table_page,
+        });
+    }
+
+    fn select_next_message_page(&mut self, actions_tx: UnboundedSender<Actions>) {
+        let Some(selected_account_idx) = self.accounts_list_selected else {
+            return;
+        };
+
+        let Some(login) = self.view_state.accounts.get(selected_account_idx).cloned() else {
+            return;
+        };
+
+        let Some(folders) = &self.view_state.folders else {
+            return;
+        };
+
+        let Some(selected_folder_idx) = self.folders_list_selected else {
+            return;
+        };
+
+        let Some(folder) = folders.get(selected_folder_idx).cloned() else {
+            return;
+        };
+
+        let Some(messages) = &self.view_state.messages else {
+            return;
+        };
+
+        let a = messages.len();
+
+        if messages.len() == 10 {
+            eprintln!("m len = {}", a);
+            self.messages_table_state = TableState::default();
+            self.messages_table_selected = None;
+            self.view_state.messages = None;
+            self.messages_table_page += 1;
+        } else {
+            eprintln!("m len = {}", a);
+
+            return;
+        };
+
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::ListEnvelopes {
+            login,
+            folder,
+            page: self.messages_table_page,
         });
     }
 }

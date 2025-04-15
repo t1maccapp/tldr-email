@@ -18,10 +18,12 @@ use tokio::sync::mpsc::UnboundedSender;
 #[tokio::main]
 async fn main() -> Result<()> {
     let state = get_initial_state_from_args().await?;
-    let tx = spawn_email_backend_task(state.clone()).await?;
+    let actions_tx = spawn_email_backend_task(state.clone()).await?;
 
     let mut terminal = ratatui::init();
-    let app_result = App::default().run(&mut terminal, state.clone(), tx).await;
+    let app_result = App::default()
+        .run(&mut terminal, state.clone(), actions_tx)
+        .await;
     ratatui::restore();
     app_result
 }
@@ -31,5 +33,5 @@ async fn spawn_email_backend_task(state: Arc<State>) -> Result<UnboundedSender<A
 
     let email_backend_tx = email_backend.spawn(state.clone()).await?;
 
-    Ok(state.set_email_backend_tx(email_backend_tx).await)
+    Ok(state.spawn_email_action_forwarder(email_backend_tx).await)
 }

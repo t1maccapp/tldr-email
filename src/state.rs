@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use email::envelope::Envelope;
 use secret::Secret;
 use tokio::sync::{
     mpsc::{self, UnboundedSender},
@@ -19,14 +20,15 @@ pub struct Account {
 pub struct ViewState {
     pub accounts: Vec<String>,
     pub folders: Option<Vec<String>>,
-    pub messages: Option<Vec<String>>,
+    pub messages: Option<Vec<Envelope>>,
 }
 
 #[derive(Debug, Default)]
 pub struct State {
     pub accounts: RwLock<Vec<Account>>,
     pub account_folders: RwLock<HashMap<String, Option<Vec<String>>>>,
-    pub account_envelopes: RwLock<HashMap<String, Option<Vec<String>>>>,
+    pub account_envelopes: RwLock<HashMap<String, Option<Vec<Envelope>>>>,
+    pub is_updating: Arc<RwLock<bool>>,
     email_backend_tx: Arc<RwLock<Option<UnboundedSender<Actions>>>>,
 }
 
@@ -38,8 +40,7 @@ impl State {
             .push(Account { login, password });
     }
 
-    // TODO: damn, that is ass quality code, but will do for now
-    pub async fn set_email_backend_tx(
+    pub async fn spawn_email_action_forwarder(
         &self,
         tx: UnboundedSender<Actions>,
     ) -> UnboundedSender<Actions> {
@@ -58,6 +59,10 @@ impl State {
         });
 
         sync_tx
+    }
+
+    pub async fn is_updating(&self) -> bool {
+        *self.is_updating.read().await
     }
 
     pub async fn as_view_state(&self, login: Option<String>) -> ViewState {

@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin},
     style::{Style, Stylize},
-    widgets::{Block, List},
+    widgets::{Block, List, Row, Table},
     Frame,
 };
 
@@ -85,14 +85,34 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
     };
 
     if let Some(messages) = &app.view_state.messages {
-        let messages_list = List::new(messages.clone())
+        let rows = messages
+            .iter()
+            .map(|e| {
+                Row::new(vec![
+                    e.id.clone(),
+                    e.flags.to_string(),
+                    e.subject.clone(),
+                    e.from.to_string(),
+                    e.date.to_string(),
+                ])
+            })
+            .collect::<Vec<Row>>();
+        let widths = [
+            Constraint::Ratio(1, 9),
+            Constraint::Ratio(1, 9),
+            Constraint::Ratio(3, 9),
+            Constraint::Ratio(2, 9),
+            Constraint::Ratio(2, 9),
+        ];
+        let messages_table = Table::new(rows, widths)
+            .header(Row::new(vec!["id", "flags", "subject", "from", "date"]))
             .block(messages_block)
             .highlight_style(Style::new().black().bg(ratatui::style::Color::Gray));
 
         frame.render_stateful_widget(
-            messages_list,
+            messages_table,
             layout_rigth_tower[0],
-            &mut app.messages_list_state,
+            &mut app.messages_table_state,
         );
     } else {
         frame.render_widget(messages_block, layout_rigth_tower[0]);

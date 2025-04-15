@@ -101,7 +101,11 @@ impl EmailBackend {
                 }
 
                 // throttle actions
-                sleep(Duration::from_millis(1000)).await;
+                sleep(Duration::from_millis(500)).await;
+
+                if debouncer_cloned.write().await.len() == 0 {
+                    *state.is_updating.write().await = false;
+                }
             }
         });
 
@@ -280,10 +284,11 @@ impl EmailBackend {
                     )
                     .await;
 
-                state.account_envelopes.write().await.insert(
-                    login,
-                    Some(envelopes.unwrap().iter().map(|e| e.id.clone()).collect()),
-                );
+                state
+                    .account_envelopes
+                    .write()
+                    .await
+                    .insert(login, Some(envelopes.unwrap().to_vec()));
             }
         }
     }
