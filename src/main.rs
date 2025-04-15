@@ -7,29 +7,29 @@ mod ui;
 
 use std::sync::Arc;
 
+use actions::Actions;
 use anyhow::Result;
 use app::App;
 use args::get_initial_state_from_args;
 use email::EmailBackend;
 use state::State;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut terminal = ratatui::init();
-
     let state = get_initial_state_from_args().await?;
+    let tx = spawn_email_backend_task(state.clone()).await?;
 
-    spawn_email_backend_task(state.clone()).await?;
-
-    let app_result = App::default().run(&mut terminal, state.clone()).await;
-
+    let mut terminal = ratatui::init();
+    let app_result = App::default().run(&mut terminal, state.clone(), tx).await;
     ratatui::restore();
-
     app_result
 }
 
-async fn spawn_email_backend_task(state: Arc<State>) -> Result<()> {
-    let email_backend = EmailBackend::new(state).await?;
+async fn spawn_email_backend_task(state: Arc<State>) -> Result<UnboundedSender<Actions>> {
+    let email_backend = EmailBackend::new(state.clone()).await?;
 
-    Ok(())
+    let email_backend_tx = email_backend.spawn(state.clone()).await?;
+
+    Ok(state.set_email_backend_tx(email_backend_tx).await)
 }

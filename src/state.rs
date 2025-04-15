@@ -1,5 +1,11 @@
+use std::{collections::HashMap, sync::Arc};
+
 use secret::Secret;
-use tokio::sync::{mpsc::UnboundedSender, RwLock};
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    RwLock,
+};
+use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 
 use crate::actions::Actions;
 
@@ -10,14 +16,18 @@ pub struct Account {
 }
 
 #[derive(Debug, Default)]
-pub struct TerminalState {
-    pub accounts: Vec<Account>,
+pub struct ViewState {
+    pub accounts: Vec<String>,
+    pub folders: Option<Vec<String>>,
+    pub messages: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default)]
 pub struct State {
     pub accounts: RwLock<Vec<Account>>,
-    email_backend_tx: Option<RwLock<UnboundedSender<Actions>>>,
+    pub account_folders: RwLock<HashMap<String, Option<Vec<String>>>>,
+    pub account_envelopes: RwLock<HashMap<String, Option<Vec<String>>>>,
+    email_backend_tx: Arc<RwLock<Option<UnboundedSender<Actions>>>>,
 }
 
 impl State {
@@ -28,9 +38,65 @@ impl State {
             .push(Account { login, password });
     }
 
-    pub async fn as_terminal_state(&self) -> TerminalState {
-        TerminalState {
-            accounts: self.accounts.read().await.clone(),
+    // TODO: damn, that is ass quality code, but will do for now
+    pub async fn set_email_backend_tx(
+        &self,
+        tx: UnboundedSender<Actions>,
+    ) -> UnboundedSender<Actions> {
+        *self.email_backend_tx.write().await = Some(tx);
+
+        let email_backend_tx = self.email_backend_tx.clone();
+
+        let (sync_tx, rx) = mpsc::unbounded_channel();
+        let mut rx = UnboundedReceiverStream::new(rx);
+
+        tokio::task::spawn(async move {
+            while let Some(action) = rx.next().await {
+                eprintln!("{:?}", action);
+                let _ = email_backend_tx.read().await.as_ref().unwrap().send(action);
+            }
+        });
+
+        sync_tx
+    }
+
+    pub async fn as_view_state(&self, login: Option<String>) -> ViewState {
+        if let Some(login) = login {
+            ViewState {
+                accounts: self
+                    .accounts
+                    .read()
+                    .await
+                    .iter()
+                    .map(|a| a.login.clone())
+                    .collect(),
+                folders: self
+                    .account_folders
+                    .read()
+                    .await
+                    .get(&login)
+                    .unwrap_or(&None)
+                    .clone(),
+                messages: self
+                    .account_envelopes
+                    .read()
+                    .await
+                    .get(&login)
+                    .unwrap_or(&None)
+                    .clone(),
+            }
+        } else {
+            ViewState {
+                accounts: self
+                    .accounts
+                    .read()
+                    .await
+                    .iter()
+                    .map(|a| a.login.clone())
+                    .collect(),
+                folders: None,
+                messages: None,
+            }
         }
     }
 }

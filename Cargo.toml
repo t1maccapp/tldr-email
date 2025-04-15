@@ -11,6 +11,7 @@ email-lib = { version = "0.26.4", features = ["imap", "smtp", "autoconfig", "tok
 futures = "0.3.31"
 ratatui = "0.29.0"
 secret-lib = "1.0.0"
+throbber-widgets-tui = "0.8.0"
 tokio = { version = "1.44.2", features = ["full"] }
 tokio-stream = "0.1.17"
 tokio-util = "0.7.14"

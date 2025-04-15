@@ -5,18 +5,27 @@ use email::{
         from_addr,
     },
     backend::Backend,
+    envelope::list::{ListEnvelopes, ListEnvelopesOptions},
+    folder::list::ListFolders,
     imap::ImapContext,
     smtp::{
         config::{SmtpAuthConfig, SmtpConfig},
         SmtpContextBuilder, SmtpContextSync,
     },
 };
-use futures::StreamExt;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use anyhow::{bail, Result};
 
+use crate::{
+    actions::Actions,
+    state::{Account, State},
+};
 use email::{
     account::config::AccountConfig,
     backend::BackendBuilder,
@@ -26,19 +35,18 @@ use email::{
     },
     tls::Encryption,
 };
+use futures::StreamExt;
 use tokio::{
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        RwLock,
+    },
     time::sleep,
-};
-
-use crate::{
-    actions::Actions,
-    state::{Account, State},
 };
 
 pub struct EmailBackend {
     account_to_backends_map: HashMap<String, (Backend<ImapContext>, Backend<SmtpContextSync>)>,
-    tx: Arc<UnboundedSender<Actions>>,
+    tx: UnboundedSender<Actions>,
     rx: UnboundedReceiver<Actions>,
 }
 
@@ -47,38 +55,57 @@ impl EmailBackend {
         let mut account_to_backends_map = HashMap::new();
 
         for account in state.accounts.read().await.iter() {
+            println!("Loading autoconfig for {}", account.login);
+
             let autoconfig = from_addr(account.login.clone()).await?;
 
             let imap_backend = Self::build_imap(account, &autoconfig).await;
-
             let smtp_backend = Self::build_smtp(account, &autoconfig).await;
-
             account_to_backends_map.insert(account.login.clone(), (imap_backend?, smtp_backend?));
-        }
 
-        sleep(Duration::from_secs(30000)).await;
+            println!("{} – done", account.login);
+        }
 
         let (tx, rx) = mpsc::unbounded_channel();
 
+        sleep(Duration::from_millis(400)).await;
+
         Ok(Self {
             account_to_backends_map,
-            tx: Arc::new(tx),
+            tx,
             rx,
         })
     }
 
     // Will only be ran once due to consuming itself
-    // TODO: maybe add a once guard
-    pub async fn spawn(self) -> Result<Arc<UnboundedSender<Actions>>> {
+    // TODO: maybe add an Once guard
+    pub async fn spawn(self, state: Arc<State>) -> Result<UnboundedSender<Actions>> {
         let mut rx = UnboundedReceiverStream::new(self.rx);
+        let account_to_backends_map = self.account_to_backends_map;
+        let tx = self.tx;
+
+        let debouncer = Arc::new(RwLock::new(HashSet::<Actions>::new()));
+        let debouncer_cloned = debouncer.clone();
 
         tokio::task::spawn(async move {
             while let Some(action) = rx.next().await {
-                println!("{:?}", action);
+                debouncer.write().await.replace(action);
+                eprintln!("debouncer len = {}", debouncer.read().await.len());
             }
         });
 
-        Ok(self.tx.clone())
+        tokio::task::spawn(async move {
+            loop {
+                for action in debouncer_cloned.write().await.drain() {
+                    Self::execute_action(&account_to_backends_map, action, state.clone()).await;
+                }
+
+                // throttle actions
+                sleep(Duration::from_millis(1000)).await;
+            }
+        });
+
+        Ok(tx)
     }
 
     async fn build_imap(
@@ -151,7 +178,7 @@ impl EmailBackend {
 
         let smtp_server = autoconfig
             .email_provider()
-            .incoming_servers()
+            .outgoing_servers()
             .iter()
             .find(|s| matches!(s.server_type(), ServerType::Smtp))
             .copied();
@@ -184,6 +211,7 @@ impl EmailBackend {
                 account.login
             )
         };
+
         let smtp_config = Arc::new(SmtpConfig {
             host: smtp_host.to_string(),
             port: *smtp_port,
@@ -202,5 +230,61 @@ impl EmailBackend {
         };
 
         Ok(smtp)
+    }
+
+    async fn execute_action(
+        account_map: &HashMap<String, (Backend<ImapContext>, Backend<SmtpContextSync>)>,
+        action: Actions,
+        state: Arc<State>,
+    ) {
+        match action {
+            Actions::ListFolders { login } => {
+                state
+                    .account_folders
+                    .write()
+                    .await
+                    .insert(login.clone(), None);
+
+                let backends = account_map.get(&login).unwrap(); // TODO: unwrap
+
+                let folders = backends.0.list_folders().await;
+
+                state.account_folders.write().await.insert(
+                    login,
+                    Some(folders.unwrap().iter().map(|f| f.name.clone()).collect()), //TODO: unwrap
+                );
+            }
+
+            Actions::ListEnvelopes {
+                login,
+                folder,
+                page,
+            } => {
+                state
+                    .account_envelopes
+                    .write()
+                    .await
+                    .insert(login.clone(), None);
+
+                let backends = account_map.get(&login).unwrap(); // TODO: unwrap
+
+                let envelopes = backends
+                    .0
+                    .list_envelopes(
+                        &folder,
+                        ListEnvelopesOptions {
+                            page_size: 10,
+                            page,
+                            query: None,
+                        },
+                    )
+                    .await;
+
+                state.account_envelopes.write().await.insert(
+                    login,
+                    Some(envelopes.unwrap().iter().map(|e| e.id.clone()).collect()),
+                );
+            }
+        }
     }
 }
