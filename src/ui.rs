@@ -1,7 +1,8 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin},
     style::{Style, Stylize},
-    widgets::{Block, List, Row, Table},
+    text::{Line, ToSpan},
+    widgets::{Block, List, Paragraph, Row, Table},
     Frame,
 };
 
@@ -28,7 +29,55 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
         .constraints([Constraint::Ratio(8, 9), Constraint::Ratio(1, 9)])
         .split(layout_working_area[1]);
 
-    let status_widget = Block::bordered();
+    let status_widget = Block::default().title(match app.selected_widget {
+        SelectedWidget::Accounts => Line::from(vec![
+            " Quit ".into(),
+            "<q>".blue().bold(),
+            "     ".into(),
+            " previous acc ".into(),
+            "<k> ".blue().bold(),
+            "<Up>".blue().bold(),
+            "     ".into(),
+            " next acc ".into(),
+            "<j> ".blue().bold(),
+            "<Down>".blue().bold(),
+        ])
+        .centered(),
+        SelectedWidget::Folders => Line::from(vec![
+            " Quit ".into(),
+            "<q>".blue().bold(),
+            "     ".into(),
+            " previous folder ".into(),
+            "<k> ".blue().bold(),
+            "<Up>".blue().bold(),
+            "     ".into(),
+            " next folder ".into(),
+            "<j> ".blue().bold(),
+            "<Down>".blue().bold(),
+        ])
+        .centered(),
+        SelectedWidget::Messages => Line::from(vec![
+            " Quit ".into(),
+            "<q>".blue().bold(),
+            "     ".into(),
+            " previous message ".into(),
+            "<k> ".blue().bold(),
+            "<Up>".blue().bold(),
+            "     ".into(),
+            " next message ".into(),
+            "<j> ".blue().bold(),
+            "<Down>".blue().bold(),
+            "     ".into(),
+            " previous page ".into(),
+            "<p> ".blue().bold(),
+            "<Left>".blue().bold(),
+            "     ".into(),
+            " next page ".into(),
+            "<n> ".blue().bold(),
+            "<Right>".blue().bold(),
+        ])
+        .centered(),
+    });
     let accounts_block =
         Block::bordered()
             .title("[1] Accounts")
@@ -57,7 +106,14 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
                 _ => Style::default(),
             });
 
-    let ads_block = Block::bordered().title("Advertisement");
+    let ads_block = Paragraph::new(
+        "Act now! Limited time offer! Buy this energy drink or miss out forever! Don't regret it!",
+    )
+    .block(
+        Block::bordered()
+            .title_bottom(Line::from("press <x> to get rid of this block").right_aligned())
+            .title("Ads"),
+    );
 
     frame.render_stateful_widget(
         accounts_list,
@@ -98,15 +154,19 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             })
             .collect::<Vec<Row>>();
         let widths = [
-            Constraint::Ratio(1, 9),
-            Constraint::Ratio(1, 9),
-            Constraint::Ratio(3, 9),
-            Constraint::Ratio(2, 9),
-            Constraint::Ratio(2, 9),
+            Constraint::Ratio(1, 18),
+            Constraint::Ratio(2, 18),
+            Constraint::Ratio(11, 18),
+            Constraint::Ratio(2, 18),
+            Constraint::Ratio(2, 18),
         ];
         let messages_table = Table::new(rows, widths)
             .header(Row::new(vec!["id", "flags", "subject", "from", "date"]))
             .block(messages_block)
+            .footer(Row::new(vec![format!(
+                "page: {}",
+                app.messages_table_page.to_string()
+            )]))
             .highlight_style(Style::new().black().bg(ratatui::style::Color::Gray));
 
         frame.render_stateful_widget(

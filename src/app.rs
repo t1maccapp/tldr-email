@@ -98,6 +98,7 @@ impl App {
         match self.selected_widget {
             SelectedWidget::Accounts => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
+                KeyCode::Char('x') => Self::ads_remove(),
                 KeyCode::Char('2') => self.select_folders_widget(),
                 KeyCode::Char('3') => self.select_messages_widget(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_account(actions_tx),
@@ -106,6 +107,7 @@ impl App {
             },
             SelectedWidget::Folders => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
+                KeyCode::Char('x') => Self::ads_remove(),
                 KeyCode::Char('1') => self.select_accounts_widget(),
                 KeyCode::Char('3') => self.select_messages_widget(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_folder(actions_tx),
@@ -114,6 +116,7 @@ impl App {
             },
             SelectedWidget::Messages => match key_event.code {
                 KeyCode::Char('q') => self.exit(),
+                KeyCode::Char('x') => Self::ads_remove(),
                 KeyCode::Char('1') => self.select_accounts_widget(),
                 KeyCode::Char('2') => self.select_folders_widget(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_message(),
@@ -479,5 +482,9 @@ impl App {
             folder,
             page: self.messages_table_page,
         });
+    }
+
+    fn ads_remove() {
+        webbrowser::open("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
     }
 }
