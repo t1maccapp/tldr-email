@@ -1,7 +1,18 @@
-# Job Stories
-1. When executing this CLI app I want to provide pairs of (login, password) as ENV VARS to access my email inboxes.
-2. When app is running I want to see a list of recent emails (id, folder, subject, from, date, read/unread, starred)
-3. When app is running I want to be able to easily send emails to one or more adresses, specifying subject
-4. When I open a specific message I want to be able to quickly reply to or forward the email
-5. When I reply to a message I want to be able to quicly impove my text in formal or informal style using LLM
+## How to run
+0. Install rust `curl https://sh.rustup.rs -sSf | sh`
+1. Obtain app password for [GMail](https://support.google.com/mail/answer/185833?hl=en), [Yandex Mail](https://yandex.com/support/mail/mail-clients/others.html) or any other with support of app passwords, IMAP & SMTP.
+2. Run the CLI APP with one inbox
+```
+cargo run -- --account mail@inbox.com:pass 2> error.log;
+```
+3. Or run with multiple inboxes
+```
+cargo run -- --account mail@inbox.com:pass -- account mail2@inbox:pass 2> error.log;
+```
+4. Or run a bit safer
+```
+export PASS_1=$(pass mail@inbox.com); export PASS_2=$(pass mail2@inbox.com); cargo run -- --account mail@inbox.com:$PASS_1 --account mail2@inbox.com:"$PASS_2" 2> error.log;
+```
 
+## Known issues
+1. Tls tunnel dies after some time of innactivity
