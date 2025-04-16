@@ -3,7 +3,7 @@
 1. Obtain app password for [GMail](https://support.google.com/mail/answer/185833?hl=en), [Yandex Mail](https://yandex.com/support/mail/mail-clients/others.html) or any other with support of app passwords, IMAP & SMTP. And clone the repo: `git clone git@github.com:t1maccapp/tldr-email.git`
 2. Run the CLI APP with one inbox
 ```
-cargo run -- --account mail@inbox.com:pass 2> error.log;
+cargo run -- --account mail@inbox.com:"pass" 2> error.log;
 ```
 3. Or run with multiple inboxes
 ```
@@ -16,3 +16,6 @@ export PASS_1=$(pass mail@inbox.com); export PASS_2=$(pass mail2@inbox.com); car
 
 ## Known issues
 1. Tls tunnel dies after some time of innactivity
+
+## Tips
+Press 1,2,3,4,n to navigate between windows
