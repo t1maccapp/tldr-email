@@ -1,3 +1,4 @@
+use email_address::EmailAddress;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin},
     style::{Style, Styled, Stylize},
@@ -32,6 +33,8 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             Constraint::Ratio(1, 9),
         ])
         .split(layout_working_area[1]);
+
+    let send_to_is_valid = EmailAddress::is_valid(&app.send_to);
 
     let status_widget = Block::default().title(match app.selected_widget {
         SelectedWidget::Accounts => Line::from(vec![
@@ -97,19 +100,27 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             " send new ".into(),
             "<s> ".blue().bold(),
         ]),
-        SelectedWidget::Send => Line::from(vec![
-            " Close ".into(),
-            "<Esc>".blue().bold(),
-            "     ".into(),
-            " Next input ".into(),
-            "<Tab>".blue().bold(),
-            "     ".into(),
-            " Previous input ".into(),
-            "<Shift + Tab>".blue().bold(),
-            "     ".into(),
-            " Send ".into(),
-            "<Enter>".blue().bold(),
-        ]),
+        SelectedWidget::Send => {
+            let mut words = vec![
+                " Close ".into(),
+                "<Esc>".blue().bold(),
+                "     ".into(),
+                " Next input ".into(),
+                "<Tab>".blue().bold(),
+                "     ".into(),
+                " Previous input ".into(),
+                "<Shift + Tab>".blue().bold(),
+            ];
+
+            if send_to_is_valid {
+                words.extend(vec![
+                    "     ".into(),
+                    " Send ".into(),
+                    "<Enter>".blue().bold(),
+                ]);
+            }
+            Line::from(words)
+        }
     });
     let accounts_block =
         Block::bordered()
@@ -275,12 +286,20 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             .split(inner_area);
 
         frame.render_widget(
-            Paragraph::new(app.send_to.clone()).block(Block::bordered().title("To").border_style(
-                match app.selected_send_widget {
-                    crate::app::SelectedSendWidget::To => Style::new().green().bold(),
-                    _ => Style::default(),
-                },
-            )),
+            Paragraph::new(app.send_to.clone())
+                .block(
+                    Block::bordered()
+                        .title("To")
+                        .border_style(match app.selected_send_widget {
+                            crate::app::SelectedSendWidget::To => Style::new().green().bold(),
+                            _ => Style::default(),
+                        }),
+                )
+                .style(if send_to_is_valid {
+                    Style::default().green()
+                } else {
+                    Style::default().red()
+                }),
             inner_layout[0],
         );
 

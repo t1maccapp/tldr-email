@@ -156,9 +156,16 @@ impl App {
                 KeyCode::Char('s') => self.select_send_widget(),
                 _ => {}
             },
+            // TODO: refactor
             SelectedWidget::Send => match key_event.code {
                 KeyCode::Esc => {
-                    // TODO: refactor
+                    self.send_to = String::default();
+                    self.send_text = String::default();
+                    self.send_subject = String::default();
+                    self.select_accounts_widget()
+                }
+                KeyCode::Enter => {
+                    self.send_email(actions_tx.clone());
                     self.send_to = String::default();
                     self.send_text = String::default();
                     self.send_subject = String::default();
@@ -188,7 +195,6 @@ impl App {
                         }
                     }
                 },
-
                 _ => {}
             },
         }
@@ -700,6 +706,23 @@ impl App {
 
     fn clear_message(&mut self) {
         self.view_state.message = None;
+    }
+
+    fn send_email(&mut self, actions_tx: UnboundedSender<Actions>) {
+        let Some(selected_account_idx) = self.accounts_list_selected else {
+            return;
+        };
+
+        let Some(login) = self.view_state.accounts.get(selected_account_idx).cloned() else {
+            return;
+        };
+
+        let _ = actions_tx.send(Actions::SendMessage {
+            login,
+            to: self.send_to.clone(),
+            subject: self.send_subject.clone(),
+            text: self.send_text.clone(),
+        });
     }
 
     fn ads_remove() {

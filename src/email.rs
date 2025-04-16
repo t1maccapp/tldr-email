@@ -17,6 +17,7 @@ use email::{
         SmtpContextBuilder, SmtpContextSync,
     },
 };
+use email_address::EmailAddress;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -344,6 +345,10 @@ impl EmailBackend {
                 let Some(backends) = account_map.get(&login) else {
                     return;
                 };
+
+                if !EmailAddress::is_valid(&to) {
+                    return;
+                }
 
                 let msg = [
                     "Content-Type: text/plain",
