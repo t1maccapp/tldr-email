@@ -21,6 +21,7 @@ pub struct ViewState {
     pub accounts: Vec<String>,
     pub folders: Option<Vec<String>>,
     pub messages: Option<Vec<Envelope>>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -28,6 +29,7 @@ pub struct State {
     pub accounts: RwLock<Vec<Account>>,
     pub account_folders: RwLock<HashMap<String, Option<Vec<String>>>>,
     pub account_envelopes: RwLock<HashMap<String, Option<Vec<Envelope>>>>,
+    pub message: RwLock<Option<String>>,
     pub is_updating: Arc<RwLock<bool>>,
     email_backend_tx: Arc<RwLock<Option<UnboundedSender<Actions>>>>,
 }
@@ -89,6 +91,7 @@ impl State {
                     .get(&login)
                     .unwrap_or(&None)
                     .clone(),
+                message: self.message.read().await.clone(),
             }
         } else {
             ViewState {
@@ -101,6 +104,7 @@ impl State {
                     .collect(),
                 folders: None,
                 messages: None,
+                message: None,
             }
         }
     }

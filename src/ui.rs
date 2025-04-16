@@ -1,8 +1,8 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin},
-    style::{Style, Stylize},
-    text::{Line, ToSpan},
-    widgets::{Block, List, Paragraph, Row, Table},
+    style::{Style, Styled, Stylize},
+    text::Line,
+    widgets::{Block, Clear, List, Paragraph, Row, Table},
     Frame,
 };
 
@@ -26,7 +26,11 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
 
     let layout_rigth_tower = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Ratio(8, 9), Constraint::Ratio(1, 9)])
+        .constraints([
+            Constraint::Ratio(3, 9),
+            Constraint::Ratio(5, 9),
+            Constraint::Ratio(1, 9),
+        ])
         .split(layout_working_area[1]);
 
     let status_widget = Block::default().title(match app.selected_widget {
@@ -41,6 +45,9 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             " next acc ".into(),
             "<j> ".blue().bold(),
             "<Down>".blue().bold(),
+            "     ".into(),
+            " send new ".into(),
+            "<s> ".blue().bold(),
         ])
         .centered(),
         SelectedWidget::Folders => Line::from(vec![
@@ -54,6 +61,9 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             " next folder ".into(),
             "<j> ".blue().bold(),
             "<Down>".blue().bold(),
+            "     ".into(),
+            " send new ".into(),
+            "<s> ".blue().bold(),
         ])
         .centered(),
         SelectedWidget::Messages => Line::from(vec![
@@ -75,8 +85,31 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
             " next page ".into(),
             "<n> ".blue().bold(),
             "<Right>".blue().bold(),
+            "     ".into(),
+            " send new ".into(),
+            "<s> ".blue().bold(),
         ])
         .centered(),
+        SelectedWidget::Message => Line::from(vec![
+            " Quit ".into(),
+            "<q>".blue().bold(),
+            "     ".into(),
+            " send new ".into(),
+            "<s> ".blue().bold(),
+        ]),
+        SelectedWidget::Send => Line::from(vec![
+            " Close ".into(),
+            "<Esc>".blue().bold(),
+            "     ".into(),
+            " Next input ".into(),
+            "<Tab>".blue().bold(),
+            "     ".into(),
+            " Previous input ".into(),
+            "<Shift + Tab>".blue().bold(),
+            "     ".into(),
+            " Send ".into(),
+            "<Enter>".blue().bold(),
+        ]),
     });
     let accounts_block =
         Block::bordered()
@@ -106,12 +139,20 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
                 _ => Style::default(),
             });
 
+    let message_block =
+        Block::bordered()
+            .title("[4] Message")
+            .border_style(match app.selected_widget {
+                SelectedWidget::Message => Style::new().green().bold(),
+                _ => Style::default(),
+            });
+
     let ads_block = Paragraph::new(
         "Act now! Limited time offer! Buy this energy drink or miss out forever! Don't regret it!",
     )
     .block(
         Block::bordered()
-            .title_bottom(Line::from("press <x> to get rid of this block").right_aligned())
+            .title_bottom(Line::from("press <x> to hide ads").right_aligned())
             .title("Ads"),
     );
 
@@ -167,7 +208,7 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
                 "page: {}",
                 app.messages_table_page.to_string()
             )]))
-            .highlight_style(Style::new().black().bg(ratatui::style::Color::Gray));
+            .row_highlight_style(Style::new().black().bg(ratatui::style::Color::Gray));
 
         frame.render_stateful_widget(
             messages_table,
@@ -183,6 +224,88 @@ pub fn ui(frame: &mut Frame<'_>, app: &mut App) {
         );
     };
 
-    frame.render_widget(ads_block, layout_rigth_tower[1]);
+    if let Some(message) = &app.view_state.message {
+        let message_p = if app.messages_table_selected.is_some() {
+            Paragraph::new(message.clone()).block(message_block)
+        } else {
+            Paragraph::new("").block(message_block)
+        };
+
+        frame.render_widget(message_p, layout_rigth_tower[1]);
+    } else {
+        frame.render_widget(message_block, layout_rigth_tower[1]);
+
+        frame.render_widget(
+            throbber_widgets_tui::Throbber::default(),
+            layout_rigth_tower[1].inner(Margin::new(1, 1)),
+        );
+    }
+
+    frame.render_widget(ads_block, layout_rigth_tower[2]);
     frame.render_widget(status_widget, layout_main[1]);
+
+    if app.selected_widget == SelectedWidget::Send {
+        let Some(selected_account_idx) = app.accounts_list_selected else {
+            return;
+        };
+
+        let selected_account = app.view_state.accounts.get(selected_account_idx).cloned();
+
+        let Some(login) = selected_account else {
+            return;
+        };
+
+        frame.render_widget(Clear, layout_main[0]);
+
+        frame.render_widget(
+            Block::bordered()
+                .title(Line::from(format!("Send new message from: {}", login)).left_aligned()),
+            layout_main[0],
+        );
+
+        let inner_area = layout_main[0].inner(Margin::new(1, 1));
+
+        let inner_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Ratio(1, 9),
+                Constraint::Ratio(2, 9),
+                Constraint::Ratio(6, 9),
+            ])
+            .split(inner_area);
+
+        frame.render_widget(
+            Paragraph::new(app.send_to.clone()).block(Block::bordered().title("To").border_style(
+                match app.selected_send_widget {
+                    crate::app::SelectedSendWidget::To => Style::new().green().bold(),
+                    _ => Style::default(),
+                },
+            )),
+            inner_layout[0],
+        );
+
+        frame.render_widget(
+            Paragraph::new(app.send_subject.clone()).block(
+                Block::bordered()
+                    .title("Subject")
+                    .border_style(match app.selected_send_widget {
+                        crate::app::SelectedSendWidget::Subject => Style::new().green().bold(),
+                        _ => Style::default(),
+                    }),
+            ),
+            inner_layout[1],
+        );
+
+        frame.render_widget(
+            Paragraph::new(app.send_text.clone()).block(
+                Block::bordered()
+                    .title("Text")
+                    .border_style(match app.selected_send_widget {
+                        crate::app::SelectedSendWidget::Text => Style::new().green().bold(),
+                        _ => Style::default(),
+                    }),
+            ),
+            inner_layout[2],
+        );
+    }
 }

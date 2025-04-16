@@ -18,11 +18,22 @@ pub enum SelectedWidget {
     Accounts,
     Folders,
     Messages,
+    Message,
+    Send,
+}
+
+#[derive(Debug, Default, Eq, Hash, PartialEq)]
+pub enum SelectedSendWidget {
+    #[default]
+    To,
+    Subject,
+    Text,
 }
 
 #[derive(Debug, Default)]
 pub struct App {
     pub selected_widget: SelectedWidget,
+    pub selected_send_widget: SelectedSendWidget,
 
     pub accounts_list_state: ListState,
     pub accounts_list_selected: Option<usize>,
@@ -37,6 +48,10 @@ pub struct App {
     pub view_state: ViewState,
 
     pub should_mark_state_as_updating: bool,
+
+    pub send_to: String,
+    pub send_subject: String,
+    pub send_text: String,
 
     pub exit: bool,
 }
@@ -57,7 +72,7 @@ impl App {
                 let selected_account = self.view_state.accounts.get(selected_account_idx).cloned();
 
                 self.select_first_folder_if_not_selected(actions_tx.clone());
-                self.select_first_message_if_not_selected();
+                self.select_first_message_if_not_selected(actions_tx.clone());
 
                 if !state.is_updating().await {
                     self.view_state = state.as_view_state(selected_account).await;
@@ -68,6 +83,7 @@ impl App {
             self.handle_events(actions_tx.clone())?;
 
             if self.should_mark_state_as_updating {
+                *state.message.write().await = None; // TODO: workaround for now
                 *state.is_updating.write().await = true;
 
                 self.should_mark_state_as_updating = false;
@@ -101,6 +117,8 @@ impl App {
                 KeyCode::Char('x') => Self::ads_remove(),
                 KeyCode::Char('2') => self.select_folders_widget(),
                 KeyCode::Char('3') => self.select_messages_widget(),
+                KeyCode::Char('4') => self.select_message_widget(),
+                KeyCode::Char('s') => self.select_send_widget(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_account(actions_tx),
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_account(actions_tx),
                 _ => {}
@@ -110,6 +128,8 @@ impl App {
                 KeyCode::Char('x') => Self::ads_remove(),
                 KeyCode::Char('1') => self.select_accounts_widget(),
                 KeyCode::Char('3') => self.select_messages_widget(),
+                KeyCode::Char('4') => self.select_message_widget(),
+                KeyCode::Char('s') => self.select_send_widget(),
                 KeyCode::Up | KeyCode::Char('k') => self.select_previous_folder(actions_tx),
                 KeyCode::Down | KeyCode::Char('j') => self.select_next_folder(actions_tx),
                 _ => {}
@@ -119,10 +139,56 @@ impl App {
                 KeyCode::Char('x') => Self::ads_remove(),
                 KeyCode::Char('1') => self.select_accounts_widget(),
                 KeyCode::Char('2') => self.select_folders_widget(),
-                KeyCode::Up | KeyCode::Char('k') => self.select_previous_message(),
-                KeyCode::Down | KeyCode::Char('j') => self.select_next_message(),
+                KeyCode::Char('4') => self.select_message_widget(),
+                KeyCode::Char('s') => self.select_send_widget(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_previous_message(actions_tx),
+                KeyCode::Down | KeyCode::Char('j') => self.select_next_message(actions_tx),
                 KeyCode::Left | KeyCode::Char('p') => self.select_previous_message_page(actions_tx),
                 KeyCode::Right | KeyCode::Char('n') => self.select_next_message_page(actions_tx),
+                _ => {}
+            },
+            SelectedWidget::Message => match key_event.code {
+                KeyCode::Char('q') => self.exit(),
+                KeyCode::Char('x') => Self::ads_remove(),
+                KeyCode::Char('1') => self.select_accounts_widget(),
+                KeyCode::Char('2') => self.select_folders_widget(),
+                KeyCode::Char('3') => self.select_messages_widget(),
+                KeyCode::Char('s') => self.select_send_widget(),
+                _ => {}
+            },
+            SelectedWidget::Send => match key_event.code {
+                KeyCode::Esc => {
+                    // TODO: refactor
+                    self.send_to = String::default();
+                    self.send_text = String::default();
+                    self.send_subject = String::default();
+                    self.select_accounts_widget()
+                }
+                KeyCode::Tab => self.select_next_send_widget(),
+                KeyCode::BackTab => self.select_previous_send_widget(),
+                KeyCode::Char(value) => match self.selected_send_widget {
+                    SelectedSendWidget::To => self.send_to.push(value),
+                    SelectedSendWidget::Subject => self.send_subject.push(value),
+                    SelectedSendWidget::Text => self.send_text.push(value),
+                },
+                KeyCode::Backspace => match self.selected_send_widget {
+                    SelectedSendWidget::To => {
+                        if self.send_to.len() > 0 {
+                            let _ = self.send_to.pop();
+                        }
+                    }
+                    SelectedSendWidget::Subject => {
+                        if self.send_subject.len() > 0 {
+                            let _ = self.send_subject.pop();
+                        }
+                    }
+                    SelectedSendWidget::Text => {
+                        if self.send_text.len() > 0 {
+                            let _ = self.send_text.pop();
+                        }
+                    }
+                },
+
                 _ => {}
             },
         }
@@ -140,6 +206,30 @@ impl App {
         self.selected_widget = SelectedWidget::Messages
     }
 
+    fn select_message_widget(&mut self) {
+        self.selected_widget = SelectedWidget::Message
+    }
+
+    fn select_send_widget(&mut self) {
+        self.selected_widget = SelectedWidget::Send
+    }
+
+    fn select_previous_send_widget(&mut self) {
+        match self.selected_send_widget {
+            SelectedSendWidget::To => self.selected_send_widget = SelectedSendWidget::Text,
+            SelectedSendWidget::Subject => self.selected_send_widget = SelectedSendWidget::To,
+            SelectedSendWidget::Text => self.selected_send_widget = SelectedSendWidget::Subject,
+        }
+    }
+
+    fn select_next_send_widget(&mut self) {
+        match self.selected_send_widget {
+            SelectedSendWidget::To => self.selected_send_widget = SelectedSendWidget::Subject,
+            SelectedSendWidget::Subject => self.selected_send_widget = SelectedSendWidget::Text,
+            SelectedSendWidget::Text => self.selected_send_widget = SelectedSendWidget::To,
+        }
+    }
+
     fn exit(&mut self) {
         self.exit = true;
     }
@@ -150,6 +240,7 @@ impl App {
 
         self.clear_folders();
         self.clear_messages();
+        self.clear_message();
 
         if let Some(selected_account_idx) = self.accounts_list_selected {
             let selected_account = self.view_state.accounts.get(selected_account_idx).cloned();
@@ -176,6 +267,7 @@ impl App {
 
         self.clear_folders();
         self.clear_messages();
+        self.clear_message();
 
         let selected_account = self.view_state.accounts.get(previous_account_idx).cloned();
 
@@ -200,6 +292,7 @@ impl App {
 
         self.clear_folders();
         self.clear_messages();
+        self.clear_message();
 
         let selected_account = self.view_state.accounts.get(next_account_idx).cloned();
 
@@ -238,6 +331,7 @@ impl App {
         };
 
         self.clear_messages();
+        self.clear_message();
 
         self.should_mark_state_as_updating = true;
         let _ = actions_tx.send(Actions::ListEnvelopes {
@@ -278,6 +372,7 @@ impl App {
         self.folders_list_state.select(self.folders_list_selected);
 
         self.clear_messages();
+        self.clear_message();
 
         self.should_mark_state_as_updating = true;
         let _ = actions_tx.send(Actions::ListEnvelopes {
@@ -318,6 +413,7 @@ impl App {
         self.folders_list_state.select(self.folders_list_selected);
 
         self.clear_messages();
+        self.clear_message();
 
         self.should_mark_state_as_updating = true;
         let _ = actions_tx.send(Actions::ListEnvelopes {
@@ -327,7 +423,7 @@ impl App {
         });
     }
 
-    fn select_first_message_if_not_selected(&mut self) {
+    fn select_first_message_if_not_selected(&mut self, actions_tx: UnboundedSender<Actions>) {
         if self.messages_table_selected.is_none() && self.view_state.messages.is_some() {
             self.messages_table_selected = Some(0);
             self.messages_table_state
@@ -335,9 +431,50 @@ impl App {
         } else {
             return;
         }
+
+        self.clear_message();
+
+        let Some(selected_account_idx) = self.accounts_list_selected else {
+            return;
+        };
+
+        let Some(login) = self.view_state.accounts.get(selected_account_idx).cloned() else {
+            return;
+        };
+
+        let Some(folders) = &self.view_state.folders else {
+            return;
+        };
+
+        let Some(selected_folder_idx) = self.folders_list_selected else {
+            return;
+        };
+
+        let Some(folder) = folders.get(selected_folder_idx).cloned() else {
+            return;
+        };
+
+        let Some(messages) = &self.view_state.messages else {
+            return;
+        };
+
+        let Some(selected_message_idx) = self.messages_table_selected else {
+            return;
+        };
+
+        let Some(envelope) = messages.get(selected_message_idx) else {
+            return;
+        };
+
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::GetMessage {
+            login,
+            folder,
+            id: envelope.id.clone(),
+        });
     }
 
-    fn select_previous_message(&mut self) {
+    fn select_previous_message(&mut self, actions_tx: UnboundedSender<Actions>) {
         let Some(selected_message_idx) = self.messages_table_selected else {
             return;
         };
@@ -359,9 +496,50 @@ impl App {
         self.messages_table_selected = Some(previous_message_idx);
         self.messages_table_state
             .select(self.messages_table_selected);
+
+        self.clear_message();
+
+        let Some(selected_account_idx) = self.accounts_list_selected else {
+            return;
+        };
+
+        let Some(login) = self.view_state.accounts.get(selected_account_idx).cloned() else {
+            return;
+        };
+
+        let Some(folders) = &self.view_state.folders else {
+            return;
+        };
+
+        let Some(selected_folder_idx) = self.folders_list_selected else {
+            return;
+        };
+
+        let Some(folder) = folders.get(selected_folder_idx).cloned() else {
+            return;
+        };
+
+        let Some(messages) = &self.view_state.messages else {
+            return;
+        };
+
+        let Some(selected_message_idx) = self.messages_table_selected else {
+            return;
+        };
+
+        let Some(envelope) = messages.get(selected_message_idx) else {
+            return;
+        };
+
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::GetMessage {
+            login,
+            folder,
+            id: envelope.id.clone(),
+        });
     }
 
-    fn select_next_message(&mut self) {
+    fn select_next_message(&mut self, actions_tx: UnboundedSender<Actions>) {
         let Some(selected_message_idx) = self.messages_table_selected else {
             return;
         };
@@ -383,19 +561,47 @@ impl App {
         self.messages_table_selected = Some(next_message_idx);
         self.messages_table_state
             .select(self.messages_table_selected);
-    }
 
-    fn clear_folders(&mut self) {
-        self.folders_list_state = ListState::default();
-        self.folders_list_selected = None;
-        self.view_state.folders = None;
-    }
+        self.clear_message();
 
-    fn clear_messages(&mut self) {
-        self.messages_table_state = TableState::default();
-        self.messages_table_selected = None;
-        self.messages_table_page = 0;
-        self.view_state.messages = None;
+        let Some(selected_account_idx) = self.accounts_list_selected else {
+            return;
+        };
+
+        let Some(login) = self.view_state.accounts.get(selected_account_idx).cloned() else {
+            return;
+        };
+
+        let Some(folders) = &self.view_state.folders else {
+            return;
+        };
+
+        let Some(selected_folder_idx) = self.folders_list_selected else {
+            return;
+        };
+
+        let Some(folder) = folders.get(selected_folder_idx).cloned() else {
+            return;
+        };
+
+        let Some(messages) = &self.view_state.messages else {
+            return;
+        };
+
+        let Some(selected_message_idx) = self.messages_table_selected else {
+            return;
+        };
+
+        let Some(envelope) = messages.get(selected_message_idx) else {
+            return;
+        };
+
+        self.should_mark_state_as_updating = true;
+        let _ = actions_tx.send(Actions::GetMessage {
+            login,
+            folder,
+            id: envelope.id.clone(),
+        });
     }
 
     fn select_previous_message_page(&mut self, actions_tx: UnboundedSender<Actions>) {
@@ -462,17 +668,12 @@ impl App {
             return;
         };
 
-        let a = messages.len();
-
         if messages.len() == 10 {
-            eprintln!("m len = {}", a);
             self.messages_table_state = TableState::default();
             self.messages_table_selected = None;
             self.view_state.messages = None;
             self.messages_table_page += 1;
         } else {
-            eprintln!("m len = {}", a);
-
             return;
         };
 
@@ -484,7 +685,24 @@ impl App {
         });
     }
 
+    fn clear_folders(&mut self) {
+        self.folders_list_state = ListState::default();
+        self.folders_list_selected = None;
+        self.view_state.folders = None;
+    }
+
+    fn clear_messages(&mut self) {
+        self.messages_table_state = TableState::default();
+        self.messages_table_selected = None;
+        self.messages_table_page = 0;
+        self.view_state.messages = None;
+    }
+
+    fn clear_message(&mut self) {
+        self.view_state.message = None;
+    }
+
     fn ads_remove() {
-        webbrowser::open("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        let _ = webbrowser::open("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
     }
 }

@@ -13,6 +13,17 @@ pub enum Actions {
         folder: String,
         page: usize,
     },
+    GetMessage {
+        login: String,
+        folder: String,
+        id: String,
+    },
+    SendMessage {
+        login: String,
+        to: String,
+        subject: String,
+        text: String,
+    },
 }
 
 impl PartialEq for Actions {

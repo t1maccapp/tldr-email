@@ -5,9 +5,13 @@ use email::{
         from_addr,
     },
     backend::Backend,
-    envelope::list::{ListEnvelopes, ListEnvelopesOptions},
+    envelope::{
+        list::{ListEnvelopes, ListEnvelopesOptions},
+        Id,
+    },
     folder::list::ListFolders,
     imap::ImapContext,
+    message::{get::GetMessages, send::SendMessageThenSaveCopy, Message},
     smtp::{
         config::{SmtpAuthConfig, SmtpConfig},
         SmtpContextBuilder, SmtpContextSync,
@@ -249,13 +253,17 @@ impl EmailBackend {
                     .await
                     .insert(login.clone(), None);
 
-                let backends = account_map.get(&login).unwrap(); // TODO: unwrap
+                let Some(backends) = account_map.get(&login) else {
+                    return;
+                };
 
-                let folders = backends.0.list_folders().await;
+                let Ok(folders) = backends.0.list_folders().await else {
+                    return;
+                };
 
                 state.account_folders.write().await.insert(
                     login,
-                    Some(folders.unwrap().iter().map(|f| f.name.clone()).collect()), //TODO: unwrap
+                    Some(folders.iter().map(|f| f.name.clone()).collect()),
                 );
             }
 
@@ -270,9 +278,11 @@ impl EmailBackend {
                     .await
                     .insert(login.clone(), None);
 
-                let backends = account_map.get(&login).unwrap(); // TODO: unwrap
+                let Some(backends) = account_map.get(&login) else {
+                    return;
+                };
 
-                let envelopes = backends
+                let Ok(envelopes) = backends
                     .0
                     .list_envelopes(
                         &folder,
@@ -282,13 +292,76 @@ impl EmailBackend {
                             query: None,
                         },
                     )
-                    .await;
+                    .await
+                else {
+                    return;
+                };
 
                 state
                     .account_envelopes
                     .write()
                     .await
-                    .insert(login, Some(envelopes.unwrap().to_vec()));
+                    .insert(login, Some(envelopes.to_vec()));
+            }
+
+            Actions::GetMessage { login, folder, id } => {
+                *state.message.write().await = None;
+
+                let Some(backends) = account_map.get(&login) else {
+                    return;
+                };
+
+                let messages = backends
+                    .0
+                    .get_messages(&folder, &Id::Single(id.into()))
+                    .await;
+
+                let Ok(messages) = messages else {
+                    return;
+                };
+
+                let Some(message) = messages.first() else {
+                    return;
+                };
+
+                let Ok(parsed_message) = message.parsed() else {
+                    return;
+                };
+
+                let Some(body_text) = parsed_message.body_text(0) else {
+                    return;
+                };
+
+                *state.message.write().await = Some(body_text.to_string());
+            }
+
+            Actions::SendMessage {
+                login,
+                to,
+                subject,
+                text,
+            } => {
+                let Some(backends) = account_map.get(&login) else {
+                    return;
+                };
+
+                let msg = [
+                    "Content-Type: text/plain",
+                    &format!("From: {}", login).to_string(),
+                    &format!("To: {}", to).to_string(),
+                    &format!("Subject: {}", subject).to_string(),
+                    "",
+                    &text,
+                ]
+                .join("\n");
+
+                let msg = Message::from(msg.as_str());
+
+                let Ok(raw) = msg.raw() else {
+                    return;
+                };
+
+                let _ = backends.1.send_message_then_save_copy(raw).await;
             }
         }
     }
