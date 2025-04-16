@@ -1,6 +1,6 @@
 ## How to run
 0. Install rust `curl https://sh.rustup.rs -sSf | sh`
-1. Obtain app password for [GMail](https://support.google.com/mail/answer/185833?hl=en), [Yandex Mail](https://yandex.com/support/mail/mail-clients/others.html) or any other with support of app passwords, IMAP & SMTP.
+1. Obtain app password for [GMail](https://support.google.com/mail/answer/185833?hl=en), [Yandex Mail](https://yandex.com/support/mail/mail-clients/others.html) or any other with support of app passwords, IMAP & SMTP. And clone the repo: `git clone git@github.com:t1maccapp/tldr-email.git`
 2. Run the CLI APP with one inbox
 ```
 cargo run -- --account mail@inbox.com:pass 2> error.log;
