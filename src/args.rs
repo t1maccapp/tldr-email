@@ -18,7 +18,7 @@ pub async fn get_initial_state_from_args() -> Result<Arc<State>> {
 
     let args = Args::parse();
 
-    if args.accounts.len() < 1 {
+    if args.accounts.is_empty() {
         anyhow::bail!("provide at least one --account login:password");
     }
 

@@ -1,7 +1,7 @@
 use email_address::EmailAddress;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin},
-    style::{Style, Styled, Stylize},
+    style::{Style, Stylize},
     text::Line,
     widgets::{Block, Clear, List, Paragraph, Row, Table},
     Frame,

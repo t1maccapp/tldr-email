@@ -180,17 +180,17 @@ impl App {
                 },
                 KeyCode::Backspace => match self.selected_send_widget {
                     SelectedSendWidget::To => {
-                        if self.send_to.len() > 0 {
+                        if !self.send_to.is_empty() {
                             let _ = self.send_to.pop();
                         }
                     }
                     SelectedSendWidget::Subject => {
-                        if self.send_subject.len() > 0 {
+                        if !self.send_subject.is_empty() {
                             let _ = self.send_subject.pop();
                         }
                     }
                     SelectedSendWidget::Text => {
-                        if self.send_text.len() > 0 {
+                        if !self.send_text.is_empty() {
                             let _ = self.send_text.pop();
                         }
                     }
@@ -489,7 +489,7 @@ impl App {
             return;
         };
 
-        if messages.len() == 0 {
+        if messages.is_empty() {
             return;
         }
 
@@ -554,7 +554,7 @@ impl App {
             return;
         };
 
-        if messages.len() == 0 {
+        if messages.is_empty() {
             return;
         }
 

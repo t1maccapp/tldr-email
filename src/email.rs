@@ -227,7 +227,6 @@ impl EmailBackend {
             encryption: Some(Encryption::default()),
             login: account.login.to_string(),
             auth: SmtpAuthConfig::Password(PasswordConfig(account.password.clone())),
-            ..Default::default()
         });
 
         let smtp_ctx = SmtpContextBuilder::new(account_config.clone(), smtp_config.clone());
