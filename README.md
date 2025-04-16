@@ -18,4 +18,4 @@ export PASS_1=$(pass mail@inbox.com); export PASS_2=$(pass mail2@inbox.com); car
 1. Tls tunnel dies after some time of innactivity
 
 ## Tips
-Press 1,2,3,4,n to navigate between windows
+Press 1,2,3,4 to navigate between windows
